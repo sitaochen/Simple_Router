@@ -47,7 +47,7 @@ cksum(const void* _data, int len)
     sum += data[0] << 8;
   while (sum > 0xffff)
     sum = (sum >> 16) + (sum & 0xffff);
-  sum = htons (~sum);
+  sum = htons (~sum); // yield 0x0000 if checksum is correct.
   return sum ? sum : 0xffff;
 }
 

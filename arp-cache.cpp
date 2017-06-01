@@ -24,6 +24,10 @@
 
 namespace simple_router {
 
+void ArpCache::handle_arpreq(ArpRequest& request) {
+
+}
+
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 // IMPLEMENT THIS METHOD
@@ -32,6 +36,22 @@ ArpCache::periodicCheckArpRequestsAndCacheEntries()
 {
 
   // FILL THIS IN
+  for (auto p : m_arpRequests) {
+    handle_arpreq(*p);
+  }
+  // remove all timeout request, and resend new request
+
+  // To reduce staleness of the ARP information, 
+  // entries in ARP cache should time out after 30 seconds. 
+  // The starter code (ArpCache class) already includes the facility to mark ARP entries “invalid”. 
+  // Your task is to remove such entries and to implement ARP re-request logic.
+
+  // The router should send an ARP request about once a second until an ARP reply comes back or the request has been sent out at least 5 times.
+  // If your router didn’t receive ARP reply after re-transmitting an ARP request 5 times, 
+  // it should stop re-transmitting, remove the pending request, 
+  // and any packets that are queued for the transmission that are associated with the request.
+
+  // Extra Credit Your router can also send an ICMP Destination Unreachable message to the source IP.
 
 }
 //////////////////////////////////////////////////////////////////////////

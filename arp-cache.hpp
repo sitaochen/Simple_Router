@@ -211,6 +211,8 @@ private:
 
   friend std::ostream&
   operator<<(std::ostream& os, const ArpCache& cache);
+
+  void handle_arpreq(ArpRequest& request);
 };
 
 std::ostream&

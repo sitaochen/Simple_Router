@@ -33,6 +33,12 @@ RoutingTable::lookup(uint32_t ip) const
 {
 
   // FILL THIS IN
+  unsigned int size = m_entries.size();
+  for (auto e : m_entries) {
+    if (e.dest == (ip & e.mask)) {
+      return e;
+    }
+  }
 
   throw std::runtime_error("Routing entry not found");
 }
