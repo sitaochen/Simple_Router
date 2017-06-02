@@ -105,6 +105,42 @@ public:
   const Interface*
   findIfaceByName(const std::string& name) const;
 
+
+/* add util functions
+*/
+void 
+makeArpReplyPacket(Buffer& reply, const Interface* iface, struct ethernet_hdr* pEther, struct arp_hdr* pARP);
+
+void 
+processIncommingArp(const Buffer& packet, const Interface* iface, struct ethernet_hdr* pEther);
+
+void 
+processIncommingIPv4(const Buffer& packet, const Interface* iface,struct ethernet_hdr* pEther);
+
+void 
+processIncommingIcmp(const Buffer& packet, const Interface* iface,struct ethernet_hdr* pEther, struct ip_hdr* pIPv4);
+
+void 
+forwardIPv4Packet(const Buffer& packet, struct ethernet_hdr* pEther, struct ip_hdr* pIPv4);
+
+/*
+void makeForwardIPPacket();
+
+void makeICMPReplyPacket();
+*/
+
+
+struct ethernet_hdr*
+validateEther(const Buffer& packet, const Interface* iface);
+
+struct arp_hdr*
+validateArp(const Buffer& packet);
+
+struct ip_hdr*
+validateIPv4(const Buffer& packet);
+/*
+*/
+
 private:
   ArpCache m_arp;
   RoutingTable m_routingTable;
