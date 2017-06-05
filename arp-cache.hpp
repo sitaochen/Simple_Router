@@ -199,6 +199,9 @@ private:
   void
   ticker();
 
+
+
+
 private:
   SimpleRouter& m_router;
 
@@ -212,7 +215,7 @@ private:
   friend std::ostream&
   operator<<(std::ostream& os, const ArpCache& cache);
 
-  void handle_arpreq(ArpRequest& request);
+  void handle_arpreq(std::shared_ptr<ArpRequest>& request);
 };
 
 std::ostream&

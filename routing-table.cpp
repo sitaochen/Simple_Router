@@ -31,15 +31,26 @@ namespace simple_router {
 RoutingTableEntry
 RoutingTable::lookup(uint32_t ip) const
 {
-
   // FILL THIS IN
-  unsigned int size = m_entries.size();
+  int match_len = -1;
+  RoutingTableEntry res;
   for (auto e : m_entries) {
-    if (e.dest == (ip & e.mask)) {
-      return e;
+    if ((e.dest & e.mask) == (ip & e.mask)) {
+      int len = 32;
+      unsigned rmask = ~e.mask;
+      while (rmask > 0) {
+        len --;
+        rmask /= 2;
+      }
+      if (match_len < len) {
+        match_len = len;
+        res = e;
+      }
     }
   }
-
+  if (match_len >= 0) {
+    return res;
+  }
   throw std::runtime_error("Routing entry not found");
 }
 //////////////////////////////////////////////////////////////////////////

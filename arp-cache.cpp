@@ -24,9 +24,23 @@
 
 namespace simple_router {
 
-void ArpCache::handle_arpreq(ArpRequest& request) {
-
+void 
+ArpCache::handle_arpreq(std::shared_ptr<ArpRequest>& request) {
+  time_point now = steady_clock::now();
+  if (now - request->timeSent <= seconds(1)) { return; }
+  if (request->nTimesSent == 5) {
+    for (auto & pendingPacket : request->packets) {
+      const Interface* outIface = m_router.findIfaceByName(pendingPacket.iface);
+      m_router.replyIcmpHostUnreachable(pendingPacket.packet, outIface);
+    }
+    return;  
+  }
+  m_router.sendArpRequest(request->ip);
+  request->nTimesSent ++;
+  request->timeSent = now;
 }
+
+
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -34,24 +48,24 @@ void ArpCache::handle_arpreq(ArpRequest& request) {
 void
 ArpCache::periodicCheckArpRequestsAndCacheEntries()
 {
-
+  std::lock_guard<std::mutex> lock(m_mutex);
+  
   // FILL THIS IN
   for (auto p : m_arpRequests) {
-    handle_arpreq(*p);
+    handle_arpreq(p);
   }
-  // remove all timeout request, and resend new request
 
-  // To reduce staleness of the ARP information, 
-  // entries in ARP cache should time out after 30 seconds. 
-  // The starter code (ArpCache class) already includes the facility to mark ARP entries “invalid”. 
-  // Your task is to remove such entries and to implement ARP re-request logic.
+  // check cache entries
+  std::vector<std::list<std::shared_ptr<ArpEntry>>::iterator> invalidEntries;
+  for (auto it = m_cacheEntries.begin(); it != m_cacheEntries.end(); ++it) {
+    if (!(*it)->isValid) {
+      invalidEntries.push_back(it);
+    }
+  }
+  for (auto it: invalidEntries) {
+    m_cacheEntries.erase(it);
+  }
 
-  // The router should send an ARP request about once a second until an ARP reply comes back or the request has been sent out at least 5 times.
-  // If your router didn’t receive ARP reply after re-transmitting an ARP request 5 times, 
-  // it should stop re-transmitting, remove the pending request, 
-  // and any packets that are queued for the transmission that are associated with the request.
-
-  // Extra Credit Your router can also send an ICMP Destination Unreachable message to the source IP.
 
 }
 //////////////////////////////////////////////////////////////////////////

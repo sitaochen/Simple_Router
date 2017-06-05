@@ -40,7 +40,7 @@ public:
 public:
   std::string name;
   Buffer addr;
-  uint32_t ip;
+  uint32_t ip; // network byte order
 };
 
 inline bool

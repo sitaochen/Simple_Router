@@ -106,23 +106,42 @@ public:
   findIfaceByName(const std::string& name) const;
 
 
-/* add util functions
+/** 
+  Additional Helper Functions
 */
-void 
-makeArpReplyPacket(Buffer& reply, const Interface* iface, struct ethernet_hdr* pEther, struct arp_hdr* pARP);
 
 void 
-processIncommingArp(const Buffer& packet, const Interface* iface, struct ethernet_hdr* pEther);
+processIncommingArp(const Buffer& packet, const Interface* iface);
 
 void 
-processIncommingIPv4(const Buffer& packet, const Interface* iface,struct ethernet_hdr* pEther);
+processIncommingIPv4(const Buffer& packet, const Interface* iface);
 
 void 
-processIncommingIcmp(const Buffer& packet, const Interface* iface,struct ethernet_hdr* pEther, struct ip_hdr* pIPv4);
+processIncommingIcmp(const Buffer& packet, const Interface* iface);
+
+void
+processArpReply(const Buffer& packet);
 
 void 
-forwardIPv4Packet(const Buffer& packet, struct ethernet_hdr* pEther, struct ip_hdr* pIPv4);
+forwardIPv4Packet(const Buffer& packet, const Interface* iface);
 
+void 
+replyIcmpPortUnreachable(const Buffer& packet, const Interface* iface);
+
+void 
+replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface);
+
+void 
+replyIcmpNetworkUnreachable(const Buffer& packet, const Interface* iface);
+
+void
+replyIcmpHostUnreachable(const Buffer& packet, const Interface* iface); 
+
+void 
+sendArpReply(const Buffer& packet,const Interface* iface);
+
+void
+sendArpRequest(uint32_t ip);
 /*
 void makeForwardIPPacket();
 
@@ -138,6 +157,9 @@ validateArp(const Buffer& packet);
 
 struct ip_hdr*
 validateIPv4(const Buffer& packet);
+
+struct icmp_hdr*
+validateICMP(const Buffer& packet);
 /*
 */
 
