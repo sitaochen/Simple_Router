@@ -31,16 +31,19 @@ void
 SimpleRouter::handlePacket(const Buffer& packet, const std::string& inIface)
 {
   struct ethernet_hdr *pEther; 
-  std::cerr << "Got packet of size " << packet.size() << " on interface " << inIface << std::endl;
+  std::cerr << " " << std::endl;
+  std::cerr << "Got packet of size " << std::dec << packet.size() << " on interface " << inIface << std::endl;
   const Interface* iface = findIfaceByName(inIface);
   if (iface == nullptr) {
     std::cerr << "Received packet, but interface is unknown, ignoring" << std::endl;
     return;
   }
-  std::cerr << getRoutingTable() << std::endl;
+  //print_hdrs((uint8_t*)packet.data(), packet.size());
+  //std::cerr << getRoutingTable() << std::endl;
   
   // My Code start here
   if ((pEther = validateEther(packet, iface)) == nullptr) {
+    std::cerr << std::endl;
     return;
   }
   if (ethertype((uint8_t*)pEther) == ethertype_arp) { // incomming arp
@@ -336,6 +339,7 @@ SimpleRouter::processIncommingIPv4(const Buffer& packet, const Interface* iface)
     if (pIPv4->ip_ttl-1 == 0x00) {
       std::cerr << "reply icmp time exceeded" << std::endl;
       replyIcmpTimeExceeded(packet, iface);
+      return;
     }
     RoutingTableEntry routing_entry;
     try {
@@ -361,7 +365,21 @@ SimpleRouter::processIncommingIPv4(const Buffer& packet, const Interface* iface)
 void
 SimpleRouter::processIncommingIcmp(const Buffer& packet, const Interface* iface) 
 {
+  struct ethernet_hdr *pEther = (struct ethernet_hdr*)packet.data();
   struct ip_hdr * pIPv4 = (struct ip_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
+  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
+  std::cerr << "routing entry: " << routing_entry << std::endl;
+  const auto outIface = findIfaceByName(routing_entry.ifName);
+  std::cerr << "out iface: " << *outIface << std::endl;
+  const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  DEBUG;
+  if (arp_entry == nullptr) {
+    std::cerr << "Arp entry not found, queue ICMP echo reply" << std::endl;
+    m_arp.queueRequest(routing_entry.gw, packet, iface->name);
+    return;
+  }
+  std::cerr << "here " << std::endl;
+
   // send an Echo Reply:
   Buffer& reply = *(new Buffer(packet));
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)reply.data();
@@ -371,7 +389,7 @@ SimpleRouter::processIncommingIcmp(const Buffer& packet, const Interface* iface)
   pReplyICMP->icmp_type = 0;
   pReplyICMP->icmp_code = 0;
   pReplyICMP->icmp_sum = 0;
-  pReplyICMP->icmp_sum = cksum((uint8_t*)pReplyICMP, sizeof(struct icmp_hdr));
+  pReplyICMP->icmp_sum = cksum((uint8_t*)pReplyICMP, packet.size() - sizeof(struct ethernet_hdr) - sizeof(struct ip_hdr));
   // prepare ip header
   pReplyIPv4->ip_id = 0;
   pReplyIPv4->ip_src = pIPv4->ip_dst;
@@ -380,16 +398,14 @@ SimpleRouter::processIncommingIcmp(const Buffer& packet, const Interface* iface)
   pReplyIPv4->ip_ttl = 64;
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
-  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
-  const auto outIface = findIfaceByName(routing_entry.ifName);
-  const auto arp_entry = m_arp.lookup(routing_entry.gw);
-  if (arp_entry == nullptr) {
-    std::cerr << "Arp entry not found, queue ICMP echo reply" << std::endl;
-    m_arp.queueRequest(routing_entry.gw, reply, outIface->name);
-    return;
-  }
+  memcpy(pReplyEther->ether_shost, pEther->ether_dhost, 6);
+  memcpy(pReplyEther->ether_dhost, pEther->ether_shost, 6);
+  /*
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
+  */
+  std::cerr << "send packet via " << *outIface << std::endl;
+  print_hdrs((uint8_t*)pReplyEther, reply.size());
   sendPacket(reply, outIface->name);
 }
 
@@ -397,18 +413,20 @@ void
 SimpleRouter::processArpReply(const Buffer& packet) {
   struct arp_hdr *pArp = (struct arp_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
   // extract src IP and src MAC
-  uint32_t ip = ntohl(pArp->arp_sip);
+  uint32_t ip = pArp->arp_sip;
   Buffer mac(pArp->arp_sha, pArp->arp_sha + 6);
   if (m_arp.lookup(ip) == nullptr) { 
-    std::cerr << "ARP reply, new entry" << std::endl;
+    std::cerr << "ARP reply, new entry: ";
+    print_addr_ip_int(ip);
+    std::cerr << macToString(mac) << std::endl;
     auto arpRequest = m_arp.insertArpEntry(mac, ip);
     if (arpRequest == nullptr) {
       std::cerr << "No queued request to remove" << std::endl;
     } else {
       std::cerr << "Remove queued request" << std::endl;
       for (auto pendingPacket: arpRequest->packets) {
-        auto outIface = findIfaceByName(pendingPacket.iface);
-        forwardIPv4Packet(pendingPacket.packet, outIface);
+        auto iface = findIfaceByName(pendingPacket.iface);
+        handlePacket(pendingPacket.packet, iface->name);
       }
       m_arp.removeRequest(arpRequest);
     }
@@ -421,39 +439,27 @@ void
 SimpleRouter::forwardIPv4Packet(const Buffer& packet, const Interface* iface) 
 {
   struct ip_hdr* pIPv4 = (struct ip_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
-  uint32_t dip = ntohl(pIPv4->ip_dst);
+  uint32_t dip = pIPv4->ip_dst;
   const auto routing_entry = m_routingTable.lookup(dip);
   const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  if (arp_entry == nullptr) {
+    std::cerr << "Arp entry not found, queue IPv4 Packet to forward" << std::endl;
+    m_arp.queueRequest(routing_entry.gw, packet, iface->name);
+    return;
+  }
   // make a new packet, and send it via entry.ifName 
   Buffer forward = packet;
   struct ethernet_hdr *pForwardEther = (struct ethernet_hdr*)forward.data();
   struct ip_hdr *pForwardIPv4 = (struct ip_hdr*)((uint8_t*)forward.data() + sizeof(struct ethernet_hdr)); 
-      
-  const auto iface_forward = findIfaceByName(routing_entry.ifName);
-  // prepare ethernet header
-  memcpy(pForwardEther->ether_shost, iface_forward->addr.data(), 6);
-  memcpy(pForwardEther->ether_dhost, arp_entry->mac.data(), 6); 
-  // prepare ip header, convert all fields to host order
-  // total length, identification, offset, checksum, 
-  // source addr, dest addr, options + padding
-  pForwardIPv4->ip_len = ntohs(pForwardIPv4->ip_len);
-  pForwardIPv4->ip_id = ntohs(pForwardIPv4->ip_id);
-  pForwardIPv4->ip_off = ntohs(pForwardIPv4->ip_off);
-  pForwardIPv4->ip_src = ntohl(pForwardIPv4->ip_src);
-  pForwardIPv4->ip_dst = ntohl(pForwardIPv4->ip_dst);
+  const auto outIface = findIfaceByName(routing_entry.ifName);
+  // prepare ip header
   pForwardIPv4->ip_sum = 0;
-  pForwardIPv4->ip_ttl -= 1;
-  if (pForwardIPv4->ip_ttl == 0) {
-    std::cerr << "IP header ttl = 0" << std::endl;
-  } 
-  // compute checksum
+  pForwardIPv4->ip_ttl --; 
   pForwardIPv4->ip_sum = cksum(pForwardIPv4, sizeof(struct ip_hdr));
-  // convert ip header fields back to network order
-  pForwardIPv4->ip_len = htons(pForwardIPv4->ip_len);
-  pForwardIPv4->ip_id = htons(pForwardIPv4->ip_id);
-  pForwardIPv4->ip_off = htons(pForwardIPv4->ip_off);
-  pForwardIPv4->ip_src = htonl(pForwardIPv4->ip_src);
-  pForwardIPv4->ip_dst = htonl(pForwardIPv4->ip_dst);
+  // prepare ethernet header
+  memcpy(pForwardEther->ether_shost, outIface->addr.data(), 6);
+  memcpy(pForwardEther->ether_dhost, arp_entry->mac.data(), 6); 
+
   sendPacket(forward, routing_entry.ifName);
   
 }
@@ -480,13 +486,20 @@ void SimpleRouter::sendArpReply(const Buffer& packet, const Interface* iface) {
 void 
 SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const Interface* iface) 
 {
+  struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
+  struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
+  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
+  const auto outIface = findIfaceByName(routing_entry.ifName);
+  const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  if (arp_entry == nullptr) {
+    std::cerr << "Arp entry not found, queue ICMP Port Unreachable" << std::endl;
+    m_arp.queueRequest(routing_entry.gw, packet, iface->name);
+    return;
+  }
   Buffer& reply = *(new Buffer(sizeof(struct ethernet_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr)));
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)((uint8_t*)reply.data());
   struct ip_hdr *pReplyIPv4 = (struct ip_hdr*)((uint8_t*)pReplyEther + sizeof(struct ethernet_hdr));
   struct icmp_t3_hdr *pReplyIcmpT3 = (struct icmp_t3_hdr*)((uint8_t*)pReplyIPv4 + sizeof(struct ip_hdr));
-  struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
-  struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
-  //struct icmp_t3_hdr *pIcmp = (struct icmp_t3_hdr*)((uint8_t*)pIPv4 + sizeof(struct ip_hdr));
   memcpy(pReplyEther, pEther, sizeof(struct ethernet_hdr));
   memcpy(pReplyIPv4, pIPv4, sizeof(struct ip_hdr));
   // prepare ICMP
@@ -505,14 +518,7 @@ SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const Interface* if
   pReplyIPv4->ip_ttl = 64;
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
-  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
-  const auto outIface = findIfaceByName(routing_entry.ifName);
-  const auto arp_entry = m_arp.lookup(routing_entry.gw);
-  if (arp_entry == nullptr) {
-    std::cerr << "Arp entry not found, queue ICMP Port Unreachable" << std::endl;
-    m_arp.queueRequest(routing_entry.gw, reply, outIface->name);
-    return;
-  }
+  
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
@@ -521,12 +527,21 @@ SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const Interface* if
 void 
 SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface) 
 {
+  struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
+  struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
+  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_src);
+  const auto outIface = findIfaceByName(routing_entry.ifName);
+  const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  if (arp_entry == nullptr) {
+    std::cerr << "Arp entry not found, queue ICMP Time Exceeded" << std::endl;
+    m_arp.queueRequest(routing_entry.gw, packet, iface->name);
+    return;
+  }
   Buffer& reply = *(new Buffer(sizeof(struct ethernet_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr)));
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)((uint8_t*)reply.data());
   struct ip_hdr *pReplyIPv4 = (struct ip_hdr*)((uint8_t*)pReplyEther + sizeof(struct ethernet_hdr));
   struct icmp_t3_hdr *pReplyIcmpT3 = (struct icmp_t3_hdr*)((uint8_t*)pReplyIPv4 + sizeof(struct ip_hdr));
-  struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
-  struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
+  
   //struct icmp_t3_hdr *pIcmp = (struct icmp_t3_hdr*)((uint8_t*)pIPv4 + sizeof(struct ip_hdr));
   memcpy(pReplyEther, pEther, sizeof(struct ethernet_hdr));
   memcpy(pReplyIPv4, pIPv4, sizeof(struct ip_hdr));
@@ -539,21 +554,16 @@ SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface
   memcpy(pReplyIcmpT3->data, pIPv4, ICMP_DATA_SIZE);
   pReplyIcmpT3->icmp_sum = cksum(pReplyIcmpT3, sizeof(struct icmp_t3_hdr));
   // prepare IP
+  pReplyIPv4->ip_len = sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr);
+  pReplyIPv4->ip_p = ip_protocol_icmp;
   pReplyIPv4->ip_id = 0;
-  pReplyIPv4->ip_src = pIPv4->ip_dst;
+  pReplyIPv4->ip_src = outIface->ip;
   pReplyIPv4->ip_dst = pIPv4->ip_src;
   pReplyIPv4->ip_sum = 0;
   pReplyIPv4->ip_ttl = 64;
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
-  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
-  const auto outIface = findIfaceByName(routing_entry.ifName);
-  const auto arp_entry = m_arp.lookup(routing_entry.gw);
-  if (arp_entry == nullptr) {
-    std::cerr << "Arp entry not found, queue ICMP Time Exceeded" << std::endl;
-    m_arp.queueRequest(routing_entry.gw, reply, outIface->name);
-    return;
-  }
+  
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
@@ -592,7 +602,7 @@ SimpleRouter::replyIcmpNetworkUnreachable(const Buffer& packet, const Interface*
   const auto arp_entry = m_arp.lookup(routing_entry.gw);
   if (arp_entry == nullptr) {
     std::cerr << "Arp entry not found, queue ICMP Network Unreachable" << std::endl;
-    m_arp.queueRequest(routing_entry.gw, reply, outIface->name);
+    m_arp.queueRequest(routing_entry.gw, reply, iface->name);
     return;
   }
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
@@ -610,7 +620,7 @@ SimpleRouter::replyIcmpHostUnreachable(const Buffer& packet, const Interface* if
   const auto arp_entry = m_arp.lookup(routing_entry.gw);
   if (arp_entry == nullptr) {
     std::cerr << "Arp entry not found, queue ICMP Host Unreachable" << std::endl;
-    m_arp.queueRequest(routing_entry.gw, packet, outIface->name);
+    m_arp.queueRequest(routing_entry.gw, packet, iface->name);
     return;
   }
   Buffer& reply = *(new Buffer(sizeof(struct ethernet_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr)));
@@ -638,6 +648,7 @@ SimpleRouter::replyIcmpHostUnreachable(const Buffer& packet, const Interface* if
   // prepare ethernet header
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
+  
   sendPacket(reply, outIface->name);
 }
 
@@ -653,6 +664,8 @@ SimpleRouter::sendArpRequest(uint32_t ip) {
   pArp->arp_pln = 0x04;
   pArp->arp_op = htons(0x0001);
   const auto routing_entry = m_routingTable.lookup(ip);
+  // debug
+  std::cerr << routing_entry << std::endl;
   const auto outIface = findIfaceByName(routing_entry.ifName);
   memcpy(pArp->arp_sha, outIface->addr.data(), ETHER_ADDR_LEN);
   pArp->arp_sip = outIface->ip;
@@ -662,6 +675,9 @@ SimpleRouter::sendArpRequest(uint32_t ip) {
   memcpy(pEther->ether_shost, outIface->addr.data(), ETHER_ADDR_LEN);
   for (int i = 0; i < ETHER_ADDR_LEN; i++) { pEther->ether_dhost[i] = 0xff;}
   pEther->ether_type = htons(0x0806);
+  // debug
+  //print_hdrs((uint8_t*)pEther, request.size());
+  //std::cerr << *outIface << std::endl;
   sendPacket(request, outIface->name);
 }
 

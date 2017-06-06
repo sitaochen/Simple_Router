@@ -38,6 +38,8 @@ uint16_t cksum(const void* data, int len);
 uint16_t ethertype(const uint8_t* buf);
 uint8_t ip_protocol(const uint8_t* buf);
 
+void print_addr_ip_int(uint32_t ip);
+
 void print_addr_ip(struct in_addr address);
 /**
  * Get formatted Ethernet address, e.g. 00:11:22:33:44:55

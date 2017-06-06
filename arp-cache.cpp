@@ -31,10 +31,14 @@ ArpCache::handle_arpreq(std::shared_ptr<ArpRequest>& request) {
   if (request->nTimesSent == 5) {
     for (auto & pendingPacket : request->packets) {
       const Interface* outIface = m_router.findIfaceByName(pendingPacket.iface);
+      std::cerr << "5 tries, send Icmp host Unreachable" << std::endl;
       m_router.replyIcmpHostUnreachable(pendingPacket.packet, outIface);
     }
     return;  
   }
+  std::cerr << "handle_arpreq, send arp request";
+  print_addr_ip_int(request->ip);
+  
   m_router.sendArpRequest(request->ip);
   request->nTimesSent ++;
   request->timeSent = now;
@@ -48,8 +52,7 @@ ArpCache::handle_arpreq(std::shared_ptr<ArpRequest>& request) {
 void
 ArpCache::periodicCheckArpRequestsAndCacheEntries()
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-  
+
   // FILL THIS IN
   for (auto p : m_arpRequests) {
     handle_arpreq(p);
@@ -90,7 +93,6 @@ std::shared_ptr<ArpEntry>
 ArpCache::lookup(uint32_t ip)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
-
   for (const auto& entry : m_cacheEntries) {
     if (entry->isValid && entry->ip == ip) {
       return entry;
@@ -103,6 +105,9 @@ ArpCache::lookup(uint32_t ip)
 std::shared_ptr<ArpRequest>
 ArpCache::queueRequest(uint32_t ip, const Buffer& packet, const std::string& iface)
 {
+  std::cerr << "queued ip: ";
+  print_addr_ip_int(ip);
+  
   std::lock_guard<std::mutex> lock(m_mutex);
 
   auto request = std::find_if(m_arpRequests.begin(), m_arpRequests.end(),
@@ -122,13 +127,16 @@ ArpCache::queueRequest(uint32_t ip, const Buffer& packet, const std::string& ifa
 void
 ArpCache::removeRequest(const std::shared_ptr<ArpRequest>& entry)
 {
+
   std::lock_guard<std::mutex> lock(m_mutex);
+
   m_arpRequests.remove(entry);
 }
 
 std::shared_ptr<ArpRequest>
 ArpCache::insertArpEntry(const Buffer& mac, uint32_t ip)
 {
+
   std::lock_guard<std::mutex> lock(m_mutex);
 
   auto entry = std::make_shared<ArpEntry>();
@@ -153,6 +161,7 @@ ArpCache::insertArpEntry(const Buffer& mac, uint32_t ip)
 void
 ArpCache::clear()
 {
+
   std::lock_guard<std::mutex> lock(m_mutex);
 
   m_cacheEntries.clear();
@@ -166,6 +175,7 @@ ArpCache::ticker()
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     {
+
       std::lock_guard<std::mutex> lock(m_mutex);
 
       auto now = steady_clock::now();
@@ -184,6 +194,7 @@ ArpCache::ticker()
 std::ostream&
 operator<<(std::ostream& os, const ArpCache& cache)
 {
+
   std::lock_guard<std::mutex> lock(cache.m_mutex);
 
   os << "\nMAC            IP         AGE                       VALID\n"
