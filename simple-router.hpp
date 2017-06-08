@@ -134,8 +134,10 @@ replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface);
 void 
 replyIcmpNetworkUnreachable(const Buffer& packet, const Interface* iface);
 
+/*
 void
 replyIcmpHostUnreachable(const Buffer& packet, const Interface* iface); 
+*/
 
 void 
 sendArpReply(const Buffer& packet,const Interface* iface);

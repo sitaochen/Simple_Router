@@ -145,7 +145,6 @@ public:
 
   /**
    * Checks if an IP->MAC mapping is in the cache. IP is in network byte order.
-   * You must free the returned structure if it is not NULL.
    */
   std::shared_ptr<ArpEntry>
   lookup(uint32_t ip);
@@ -216,6 +215,8 @@ private:
   operator<<(std::ostream& os, const ArpCache& cache);
 
   void handle_arpreq(std::shared_ptr<ArpRequest>& request);
+
+  void replyIcmpHostUnreachable( Buffer& packet, std::string& iface);
 };
 
 std::ostream&

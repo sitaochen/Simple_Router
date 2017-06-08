@@ -551,10 +551,10 @@ SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface
   pReplyIcmpT3->icmp_sum = 0; 
   pReplyIcmpT3->unused = 0; 
   pReplyIcmpT3->next_mtu = 0; 
-  memcpy(pReplyIcmpT3->data, pIPv4, ICMP_DATA_SIZE);
+  memcpy((uint8_t*)(pReplyIcmpT3->data), (uint8_t*)pIPv4, ICMP_DATA_SIZE);
   pReplyIcmpT3->icmp_sum = cksum(pReplyIcmpT3, sizeof(struct icmp_t3_hdr));
   // prepare IP
-  pReplyIPv4->ip_len = sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr);
+  pReplyIPv4->ip_len = htons(sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr));
   pReplyIPv4->ip_p = ip_protocol_icmp;
   pReplyIPv4->ip_id = 0;
   pReplyIPv4->ip_src = outIface->ip;
@@ -567,6 +567,7 @@ SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
+  print_hdrs((uint8_t*)reply.data(), reply.size());
 }
 
 void 
@@ -610,14 +611,18 @@ SimpleRouter::replyIcmpNetworkUnreachable(const Buffer& packet, const Interface*
   sendPacket(reply, outIface->name);
 }
 
+/*
 void 
 SimpleRouter::replyIcmpHostUnreachable(const Buffer& packet, const Interface* iface) 
 {
+  
   struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
   struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
   const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
   const auto outIface = findIfaceByName(routing_entry.ifName);
+  DEBUG;
   const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  DEBUG;
   if (arp_entry == nullptr) {
     std::cerr << "Arp entry not found, queue ICMP Host Unreachable" << std::endl;
     m_arp.queueRequest(routing_entry.gw, packet, iface->name);
@@ -650,7 +655,9 @@ SimpleRouter::replyIcmpHostUnreachable(const Buffer& packet, const Interface* if
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   
   sendPacket(reply, outIface->name);
+  DEBUG;
 }
+*/
 
 void 
 SimpleRouter::sendArpRequest(uint32_t ip) {
