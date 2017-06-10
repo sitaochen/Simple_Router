@@ -34,6 +34,8 @@
 
 namespace simple_router {
 
+std::string to_string_hex(unsigned n);
+
 uint16_t cksum(const void* data, int len);
 uint16_t ethertype(const uint8_t* buf);
 uint8_t ip_protocol(const uint8_t* buf);

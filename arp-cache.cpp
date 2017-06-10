@@ -76,6 +76,8 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
   pReplyIPv4->ip_dst = pIPv4->ip_src;
   pReplyIPv4->ip_sum = 0;
   pReplyIPv4->ip_ttl = 64;
+  pReplyIPv4->ip_p = ip_protocol_icmp;
+  pReplyIPv4->ip_len = htons(sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr));
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
   const auto routing_entry = m_router.getRoutingTable().lookup(pIPv4->ip_dst);
@@ -184,7 +186,7 @@ ArpCache::queueRequest(uint32_t ip, const Buffer& packet, const std::string& ifa
 
   if (request == m_arpRequests.end()) {
     request = m_arpRequests.insert(m_arpRequests.end(), std::make_shared<ArpRequest>(ip));
-    print_hdrs(packet);
+    //print_hdrs(packet);
   }
 
   // Add the packet to the list of packets for this request

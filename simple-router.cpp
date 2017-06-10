@@ -42,8 +42,13 @@ SimpleRouter::handlePacket(const Buffer& packet, const std::string& inIface)
   //std::cerr << getRoutingTable() << std::endl;
   
   // My Code start here
-  if ((pEther = validateEther(packet, iface)) == nullptr) {
-    std::cerr << std::endl;
+  try {
+    pEther = validateEther(packet, iface);
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return;
+  } catch (...) {
+    std::cerr << "Unexpected exception" << std::endl;
     return;
   }
   if (ethertype((uint8_t*)pEther) == ethertype_arp) { // incomming arp
@@ -181,14 +186,14 @@ struct ethernet_hdr*
 SimpleRouter::validateEther(const Buffer& packet, const Interface* iface) 
 {
   if (packet.size() < 14) { 
-    std::cerr << "packet size too small" << std::endl; 
-    return nullptr;
+    throw std::runtime_error("Packet size too small");
   }
   struct ethernet_hdr* pEther = (struct ethernet_hdr*)packet.data();
   uint16_t type = ethertype((uint8_t*)pEther);
   if (type != ethertype_arp && type != ethertype_ip) {
-    std::cerr << "Neither ARP or IP packet received: Type=" << std::hex << unsigned(type) << std::endl;
-    return nullptr;
+    throw std::runtime_error("Neither ARP or IP packet received: Type="+to_string_hex(unsigned(type)));
+    //std::cerr << "Neither ARP or IP packet received: Type=" << std::hex << unsigned(type) << std::endl;
+    //return nullptr;
   }
   if (0 == memcmp(pEther->ether_dhost, iface->addr.data(), 6)) {
     std::cerr << "Dest MAC is to this router" << std::endl;
@@ -199,7 +204,8 @@ SimpleRouter::validateEther(const Buffer& packet, const Interface* iface)
     } else {
       std::cerr << "Dest MAC is not broadcast address" << std::endl;
       //std::cerr << "Dest MAC: " << macToString(pEther->) << std::endl;
-      return nullptr;
+      throw std::runtime_error("Dest Mac is neither this router nor broadcast");
+      //return nullptr;
     } 
   } 
   return pEther;
@@ -210,29 +216,35 @@ SimpleRouter::validateArp(const Buffer& packet)
 {
   struct arp_hdr *pARP;
   if (packet.size() != sizeof(struct ethernet_hdr) + sizeof(struct arp_hdr)) {
-    std::cerr << "Incorrect ARP size: " << packet.size()-sizeof(struct ethernet_hdr) << std::endl;
-    return nullptr;
+    throw std::runtime_error("Incorrest ARP size: " + std::to_string(packet.size()-sizeof(struct ethernet_hdr)));
+    //std::cerr << "Incorrect ARP size: " << packet.size()-sizeof(struct ethernet_hdr) << std::endl;
+    //return nullptr;
   }
   pARP = (struct arp_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
   if (ntohs(pARP->arp_hrd) != arp_hrd_ethernet) {
-    std::cerr << "ARP hardware type is not ethernet: " << std::hex << unsigned(ntohs(pARP->arp_hrd)) << std::endl;
-    return nullptr;
+    throw std::runtime_error("ARP hardware type is not ethernet: "+to_string_hex(unsigned(ntohs(pARP->arp_hrd))));
+    //std::cerr << "ARP hardware type is not ethernet: " << std::hex << unsigned(ntohs(pARP->arp_hrd)) << std::endl;
+    //return nullptr;
   }
   if (ntohs(pARP->arp_pro) != 0x0800) {
-    std::cerr << "ARP protocol is not IPv4: " << std::hex << unsigned(ntohs(pARP->arp_pro)) << std::endl;
-    return nullptr;
+    throw std::runtime_error("ARP protocol is not IPv4: " + to_string_hex(unsigned(ntohs(pARP->arp_pro))));
+    //std::cerr << "ARP protocol is not IPv4: " << std::hex << unsigned(ntohs(pARP->arp_pro)) << std::endl;
+    //return nullptr;
   }
   if (ntohs(pARP->arp_op) != 1 && ntohs(pARP->arp_op) != 2) {
-    std::cerr << "ARP is neither request nor reply, opcode: " << std::hex << unsigned(ntohs(pARP->arp_op)) << std::endl;
-    return nullptr;
+    throw std::runtime_error("ARP is neither request nor reply, opcode: " + to_string_hex(unsigned(ntohs(pARP->arp_op))));
+    //std::cerr << "ARP is neither request nor reply, opcode: " << std::hex << unsigned(ntohs(pARP->arp_op)) << std::endl;
+    //return nullptr;
   }
   if (pARP->arp_hln != 0x06) {
-    std::cerr << "ARP hw addr len is not 6, hln: " << std::hex << pARP->arp_hln << std::endl;
-    return nullptr;
+    throw std::runtime_error("ARP hw addr len is not 6, hln: " + to_string_hex(pARP->arp_hln));
+    //std::cerr << "ARP hw addr len is not 6, hln: " << std::hex << pARP->arp_hln << std::endl;
+    //return nullptr;
   }
   if (pARP->arp_pln != 0x04) {
-    std::cerr << "ARP request network addr len is not 4, hln: " << std::hex << pARP->arp_pln << std::endl;
-    return nullptr;
+    throw std::runtime_error("ARP request network addr len is not 4, hln: " + to_string_hex(pARP->arp_pln));
+    //std::cerr << "ARP request network addr len is not 4, hln: " << std::hex << pARP->arp_pln << std::endl;
+    //return nullptr;
   }
   return pARP;
 }
@@ -271,22 +283,27 @@ SimpleRouter::validateICMP(const Buffer& packet)
   struct icmp_hdr *pIcmp;
 
   if (packet.size() < sizeof(struct ethernet_hdr)+sizeof(struct ip_hdr)+sizeof(struct icmp_hdr)) {
-    std::cerr << "ICMP packet size invalide: " << packet.size() - (sizeof(struct ethernet_hdr)+sizeof(struct ip_hdr)+sizeof(struct icmp_hdr)) << std::endl;
-    return nullptr;
+    throw std::runtime_error("ICMP packet size invalide: " + std::to_string(packet.size() - (sizeof(struct ethernet_hdr)+sizeof(struct ip_hdr)+sizeof(struct icmp_hdr))));
+    //std::cerr << "ICMP packet size invalide: " << packet.size() - (sizeof(struct ethernet_hdr)+sizeof(struct ip_hdr)+sizeof(struct icmp_hdr)) << std::endl;
+    //return nullptr;
   }
   pIPv4 = (struct ip_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
   pIcmp = (struct icmp_hdr*)((uint8_t*)pIPv4 + sizeof(struct ip_hdr));
   // Router expect only Echo-request
   if (!(pIcmp->icmp_type == 8 && pIcmp->icmp_code == 0)) { 
-    std::cerr <<"ICMP unexpected type" << unsigned(pIcmp->icmp_type) << ", or code: " << unsigned(pIcmp->icmp_code) << std::endl;
-    return nullptr;
+    throw std::runtime_error("ICMP unexpected type" + std::to_string(unsigned(pIcmp->icmp_type)) + ", or code: " + std::to_string(unsigned(pIcmp->icmp_code)));
+    //std::cerr <<"ICMP unexpected type" << unsigned(pIcmp->icmp_type) << ", or code: " << unsigned(pIcmp->icmp_code) << std::endl;
+    //return nullptr;
   } 
-  struct icmp_hdr icmpCopy = *pIcmp;
-  icmpCopy.icmp_sum = 0;
-  uint16_t checksum = cksum((uint8_t*)&icmpCopy, sizeof(struct icmp_hdr));
-  if (checksum != pIcmp->icmp_sum) {
-    std::cerr << "ICMP checksum incorrect" << std::endl;
-    return nullptr;
+  //struct icmp_hdr icmpCopy = *pIcmp;
+  //memcpy(&icmpCopy, pIcmp, sizeof(struct icmp_hdr));
+  //icmpCopy.icmp_sum = 0;
+  uint16_t checksum = cksum((uint8_t*)pIcmp, packet.size()-sizeof(struct ethernet_hdr)-sizeof(struct ip_hdr));
+  std::cerr << "ICMP checksum: " << std::hex << unsigned(checksum) << std::endl;
+  if (checksum != 0xffff) {
+    throw std::runtime_error("ICMP checksum incorrect");
+    //std::cerr << "ICMP checksum incorrect" << std::endl;
+    //return nullptr;
   }
   return pIcmp;
 }
@@ -294,8 +311,16 @@ SimpleRouter::validateICMP(const Buffer& packet)
 void
 SimpleRouter::processIncommingArp(const Buffer& packet, const Interface* iface) 
 {
-  struct arp_hdr *pArp = validateArp(packet);
-  if (pArp == nullptr) { return; }
+  struct arp_hdr *pArp;
+  try {
+    pArp = validateArp(packet); 
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return;
+  } catch (...) {
+    std::cerr << "Unexpected exception" << std::endl;
+    return;
+  }
   if (ntohs(pArp->arp_op) == 1) { // incomming arp request
     if (pArp->arp_tip == iface->ip) {
       std::cerr << "Send Arp Reply" << std::endl;
@@ -317,8 +342,14 @@ SimpleRouter::processIncommingArp(const Buffer& packet, const Interface* iface)
 void 
 SimpleRouter::processIncommingIPv4(const Buffer& packet, const Interface* iface) 
 {
-  struct ip_hdr *pIPv4 = validateIPv4(packet); 
-  if (pIPv4 == nullptr) {
+  struct ip_hdr *pIPv4; 
+  try {
+    pIPv4 = validateIPv4(packet);
+  } catch(std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return;
+  } catch (...) {
+    std::cerr << "Unexpected exception" << std::endl;
     return;
   }
   uint32_t dip = pIPv4->ip_dst;
@@ -365,9 +396,24 @@ SimpleRouter::processIncommingIPv4(const Buffer& packet, const Interface* iface)
 void
 SimpleRouter::processIncommingIcmp(const Buffer& packet, const Interface* iface) 
 {
+  
   struct ethernet_hdr *pEther = (struct ethernet_hdr*)packet.data();
   struct ip_hdr * pIPv4 = (struct ip_hdr*)((uint8_t*)packet.data() + sizeof(struct ethernet_hdr));
-  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
+  struct icmp_hdr *pICMP;
+  try {
+    pICMP = validateICMP(packet);
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return;
+  } catch (...) {
+    std::cerr << "Unexpected exception" << std::endl;
+    return;
+  }
+  if (pICMP->icmp_type != 8 || pICMP->icmp_code != 0) {
+    std::cerr << "not icmp request" << std::endl;
+    return;
+  }
+  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_src);
   std::cerr << "routing entry: " << routing_entry << std::endl;
   const auto outIface = findIfaceByName(routing_entry.ifName);
   std::cerr << "out iface: " << *outIface << std::endl;
@@ -405,7 +451,7 @@ SimpleRouter::processIncommingIcmp(const Buffer& packet, const Interface* iface)
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   */
   std::cerr << "send packet via " << *outIface << std::endl;
-  print_hdrs((uint8_t*)pReplyEther, reply.size());
+  //print_hdrs(reply);
   sendPacket(reply, outIface->name);
 }
 
@@ -488,9 +534,11 @@ SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const Interface* if
 {
   struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
   struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
-  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_dst);
+  const auto routing_entry = m_routingTable.lookup(pIPv4->ip_src);
   const auto outIface = findIfaceByName(routing_entry.ifName);
   const auto arp_entry = m_arp.lookup(routing_entry.gw);
+  std::cerr << "routing entry: " << routing_entry << std::endl;
+  std::cerr << "out iface: " << *outIface << std::endl;
   if (arp_entry == nullptr) {
     std::cerr << "Arp entry not found, queue ICMP Port Unreachable" << std::endl;
     m_arp.queueRequest(routing_entry.gw, packet, iface->name);
@@ -516,11 +564,14 @@ SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const Interface* if
   pReplyIPv4->ip_dst = pIPv4->ip_src;
   pReplyIPv4->ip_sum = 0;
   pReplyIPv4->ip_ttl = 64;
+  pReplyIPv4->ip_p = ip_protocol_icmp;
+  pReplyIPv4->ip_len = htons(sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr));
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
   
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
+  print_hdrs(reply);
   sendPacket(reply, outIface->name);
 }
 
@@ -567,7 +618,7 @@ SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const Interface* iface
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
-  print_hdrs((uint8_t*)reply.data(), reply.size());
+  //print_hdrs((uint8_t*)reply.data(), reply.size());
 }
 
 void 

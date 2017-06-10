@@ -35,6 +35,13 @@
 
 namespace simple_router {
 
+std::string 
+to_string_hex(unsigned n) {
+  char buffer[10];
+  sprintf(buffer, "%#04x", n);
+  return std::string(buffer);
+}
+
 uint16_t
 cksum(const void* _data, int len)
 {
