@@ -216,7 +216,7 @@ private:
 
   void handle_arpreq(std::shared_ptr<ArpRequest>& request);
 
-  void replyIcmpHostUnreachable( Buffer& packet, std::string& iface);
+  void replyIcmpHostUnreachable( Buffer& packet);
 };
 
 std::ostream&

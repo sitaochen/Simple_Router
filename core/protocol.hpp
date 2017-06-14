@@ -52,9 +52,19 @@
 #define ICMP_DATA_SIZE 28
 
 // macro functions for debug
-#define PRINT_TOKEN(X) fprintf(stderr, "%s = %d\n", #X, X)
-#define PRINT_STR(str) fprintf(stderr, "%s = %s\n", #str, str)
-#define DEBUG printf("Function [%s] in LINE %d\n",__FUNCTION__,__LINE__)
+//#define DEBUG_ACTIVE
+#ifdef DEBUG_ACTIVE
+  #define PRINT_TOKEN(X) fprintf(stderr, "%s = %d\n", #X, X)
+  #define PRINT_STR(str) fprintf(stderr, "%s = %s\n", #str, str)
+  //#define DEBUG printf("Function [%s] in LINE %d\n",__FUNCTION__,__LINE__)
+  #define DEBUG
+  #define CERR(str) {std::cerr<<str<<std::endl;}
+#else
+  #define PRINT_TOKEN(X)  
+  #define PRINT_STR(str)  
+  #define DEBUG  
+  #define CERR(str)  
+#endif
 
 namespace simple_router {
 

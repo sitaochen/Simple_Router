@@ -21,7 +21,7 @@
 
 #include <algorithm>
 #include <iostream>
-
+#include <ctime>
 namespace simple_router {
 
 void 
@@ -29,26 +29,22 @@ ArpCache::handle_arpreq(std::shared_ptr<ArpRequest>& request) {
   time_point now = steady_clock::now();
   if (now - request->timeSent <= seconds(1)) { return; }
   if (request->nTimesSent == 5) { // 5 times and timeout
+    CERR("5 tries and 30s timeout, send Icmp host Unreachable")
     for (auto & pendingPacket : request->packets) {
-      
-      std::cerr << "5 tries and 30s timeout, send Icmp host Unreachable" << std::endl;
-      replyIcmpHostUnreachable(pendingPacket.packet, pendingPacket.iface);
+      //CERR("5 tries and 30s timeout, send Icmp host Unreachable")
+      replyIcmpHostUnreachable(pendingPacket.packet);
     }
-    //m_arpRequests.remove(request);
-    //removeRequest(request);
-
     return;  
   }
-  std::cerr << "handle_arpreq, send arp request";
-  print_addr_ip_int(request->ip);
-  
+  CERR("handle_arpreq, send arp request")
+  //print_addr_ip_int(request->ip);
   m_router.sendArpRequest(request->ip);
   request->nTimesSent ++;
   request->timeSent = now;
 }
 
 // I cannot queue ICMP Host Unreachable, because lock issue
-void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
+void ArpCache::replyIcmpHostUnreachable(Buffer& packet) {
   // if queued packet itself is an ICMP Host Unreachable, return.
   // only IP packet are queued, there is no chance that arp packet are not queued.
   struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
@@ -59,6 +55,8 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)((uint8_t*)reply.data());
   struct ip_hdr *pReplyIPv4 = (struct ip_hdr*)((uint8_t*)pReplyEther + sizeof(struct ethernet_hdr));
   struct icmp_t3_hdr *pReplyIcmpT3 = (struct icmp_t3_hdr*)((uint8_t*)pReplyIPv4 + sizeof(struct ip_hdr));
+  const auto routing_entry = m_router.getRoutingTable().lookup(pIPv4->ip_src);
+  const auto outIface = m_router.findIfaceByName(routing_entry.ifName);
   //struct icmp_t3_hdr *pIcmp = (struct icmp_t3_hdr*)((uint8_t*)pIPv4 + sizeof(struct ip_hdr));
   memcpy(pReplyEther, pEther, sizeof(struct ethernet_hdr));
   memcpy(pReplyIPv4, pIPv4, sizeof(struct ip_hdr));
@@ -72,7 +70,7 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
   pReplyIcmpT3->icmp_sum = cksum(pReplyIcmpT3, sizeof(struct icmp_t3_hdr));
   // prepare IP
   pReplyIPv4->ip_id = 0;
-  pReplyIPv4->ip_src = pIPv4->ip_dst;
+  pReplyIPv4->ip_src = outIface->ip;
   pReplyIPv4->ip_dst = pIPv4->ip_src;
   pReplyIPv4->ip_sum = 0;
   pReplyIPv4->ip_ttl = 64;
@@ -80,23 +78,9 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
   pReplyIPv4->ip_len = htons(sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr));
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
-  const auto routing_entry = m_router.getRoutingTable().lookup(pIPv4->ip_dst);
-  const auto outIface = m_router.findIfaceByName(routing_entry.ifName);
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
-  
-  for (const auto& entry : m_cacheEntries) {
-    if (entry->isValid && entry->ip == pIPv4->ip_src) {
-      arp_entry = entry;
-      break;
-    }
-  }
-  if (!arp_entry) {
-    std::cerr << "Arp entry not found, drop ICMP Host Unreachable" << std::endl;
-    return;
-  }
-  memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
+  memcpy(pReplyEther->ether_dhost, pEther->ether_shost, 6);
   m_router.sendPacket(reply, outIface->name);
-  DEBUG;
 }
 
 
@@ -107,25 +91,25 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet, std::string& iface) {
 void
 ArpCache::periodicCheckArpRequestsAndCacheEntries()
 {
-
-  // check request
+  // FILL THIS IN
+  // record request after 5 tries.
   std::vector<std::list<std::shared_ptr<ArpRequest>>::iterator> invalidRequests;
   for (auto it = m_arpRequests.begin(); it != m_arpRequests.end(); ++it) {
     if ((*it)->nTimesSent == 5) {
       invalidRequests.push_back(it);
     }
   }
-  for (auto it: invalidRequests) {
-    m_arpRequests.remove(*it);
-  }
 
-  // FILL THIS IN
+  // process each arp request
   for (auto p : m_arpRequests) {
     handle_arpreq(p);
   }
-  
 
-  // check cache entries
+  // remove request after 5 tries.
+  for (auto it: invalidRequests) {
+    m_arpRequests.remove(*it);
+  }
+  // remove cache entries that expire
   std::vector<std::list<std::shared_ptr<ArpEntry>>::iterator> invalidEntries;
   for (auto it = m_cacheEntries.begin(); it != m_cacheEntries.end(); ++it) {
     if (!(*it)->isValid) {
@@ -135,8 +119,6 @@ ArpCache::periodicCheckArpRequestsAndCacheEntries()
   for (auto it: invalidEntries) {
     m_cacheEntries.erase(it);
   }
-
-
 }
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -174,8 +156,8 @@ ArpCache::lookup(uint32_t ip)
 std::shared_ptr<ArpRequest>
 ArpCache::queueRequest(uint32_t ip, const Buffer& packet, const std::string& iface)
 {
-  std::cerr << "queued ip: ";
-  print_addr_ip_int(ip);
+  CERR("queued ip: ")
+  //print_addr_ip_int(ip);
   DEBUG;
   std::lock_guard<std::mutex> lock(m_mutex);
   DEBUG;
