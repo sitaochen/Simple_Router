@@ -18,7 +18,6 @@
 #define SIMPLE_ROUTER_ROUTING_TABLE_HPP
 
 #include "core/protocol.hpp"
-
 #include <list>
 
 namespace simple_router {

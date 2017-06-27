@@ -18,10 +18,10 @@
 #include "core/utils.hpp"
 #include "core/interface.hpp"
 #include "simple-router.hpp"
-
 #include <algorithm>
 #include <iostream>
 #include <ctime>
+
 namespace simple_router {
 
 void 
@@ -50,7 +50,6 @@ void ArpCache::replyIcmpHostUnreachable(Buffer& packet) {
   struct ethernet_hdr *pEther = (struct ethernet_hdr*)((uint8_t*)packet.data());
   struct ip_hdr *pIPv4 = (struct ip_hdr*)((uint8_t*)pEther + sizeof(struct ethernet_hdr));
   std::shared_ptr<ArpEntry> arp_entry;
-  
   Buffer& reply = *(new Buffer(sizeof(struct ethernet_hdr) + sizeof(struct ip_hdr) + sizeof(struct icmp_t3_hdr)));
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)((uint8_t*)reply.data());
   struct ip_hdr *pReplyIPv4 = (struct ip_hdr*)((uint8_t*)pReplyEther + sizeof(struct ethernet_hdr));
@@ -99,12 +98,10 @@ ArpCache::periodicCheckArpRequestsAndCacheEntries()
       invalidRequests.push_back(it);
     }
   }
-
   // process each arp request
   for (auto p : m_arpRequests) {
     handle_arpreq(p);
   }
-
   // remove request after 5 tries.
   for (auto it: invalidRequests) {
     m_arpRequests.remove(*it);
@@ -149,7 +146,6 @@ ArpCache::lookup(uint32_t ip)
       return entry;
     }
   }
-
   return nullptr;
 }
 
@@ -165,12 +161,10 @@ ArpCache::queueRequest(uint32_t ip, const Buffer& packet, const std::string& ifa
                            [ip] (const std::shared_ptr<ArpRequest>& request) {
                              return (request->ip == ip);
                            });
-
   if (request == m_arpRequests.end()) {
     request = m_arpRequests.insert(m_arpRequests.end(), std::make_shared<ArpRequest>(ip));
     //print_hdrs(packet);
   }
-
   // Add the packet to the list of packets for this request
   (*request)->packets.push_back({packet, iface});
   return *request;
@@ -225,19 +219,16 @@ ArpCache::ticker()
 {
   while (!m_shouldStop) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
-
     {
       //DEBUG;
       std::lock_guard<std::mutex> lock(m_mutex);
       //DEBUG;
       auto now = steady_clock::now();
-
       for (auto& entry : m_cacheEntries) {
         if (entry->isValid && (now - entry->timeAdded > SR_ARPCACHE_TO)) {
           entry->isValid = false;
         }
       }
-
       periodicCheckArpRequestsAndCacheEntries();
     }
   }

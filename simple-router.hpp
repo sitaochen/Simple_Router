@@ -134,18 +134,11 @@ replyIcmpTimeExceeded(const Buffer& packet, const std::string& inIface);
 void 
 replyIcmpNetworkUnreachable(const Buffer& packet, const std::string& inIface);
 
-
 void 
 sendArpReply(const Buffer& packet,const std::string& inIface);
 
 void
 sendArpRequest(uint32_t ip);
-/*
-void makeForwardIPPacket();
-
-void makeICMPReplyPacket();
-*/
-
 
 struct ethernet_hdr*
 validateEther(const Buffer& packet, const std::string& inIface);
@@ -158,8 +151,6 @@ validateIPv4(const Buffer& packet);
 
 struct icmp_hdr*
 validateICMP(const Buffer& packet);
-/*
-*/
 
 private:
   ArpCache m_arp;

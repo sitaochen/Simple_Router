@@ -197,10 +197,7 @@ private:
    */
   void
   ticker();
-
-
-
-
+  
 private:
   SimpleRouter& m_router;
 

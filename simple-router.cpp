@@ -16,17 +16,10 @@
 
 #include "simple-router.hpp"
 #include "core/utils.hpp"
-
 #include <fstream>
 
 namespace simple_router {
 
-
-
-
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-// IMPLEMENT THIS METHOD
 void
 SimpleRouter::handlePacket(const Buffer& packet, const std::string& inIface)
 {
@@ -38,7 +31,6 @@ SimpleRouter::handlePacket(const Buffer& packet, const std::string& inIface)
     std::cerr << "Received packet, but interface is unknown, ignoring" << std::endl;
     return;
   }
-  // My Code start here
   try {
     pEther = validateEther(packet, inIface);
   } catch (std::exception& e) {
@@ -88,12 +80,10 @@ SimpleRouter::loadIfconfig(const std::string& ifconfig)
     std::istringstream ifLine(line);
     std::string iface, ip;
     ifLine >> iface >> ip;
-
     in_addr ip_addr;
     if (inet_aton(ip.c_str(), &ip_addr) == 0) {
       throw std::runtime_error("Invalid IP address `" + ip + "` for interface `" + iface + "`");
     }
-
     m_ifNameToIpMap[iface] = ip_addr.s_addr;
   }
 }
@@ -105,7 +95,6 @@ SimpleRouter::printIfaces(std::ostream& os)
     os << " Interface list empty " << std::endl;
     return;
   }
-
   for (const auto& iface : m_ifaces) {
     os << iface << "\n";
   }
@@ -118,11 +107,9 @@ SimpleRouter::findIfaceByIp(uint32_t ip) const
   auto iface = std::find_if(m_ifaces.begin(), m_ifaces.end(), [ip] (const Interface& iface) {
       return iface.ip == ip;
     });
-
   if (iface == m_ifaces.end()) {
     return nullptr;
   }
-
   return &*iface;
 }
 
@@ -132,11 +119,9 @@ SimpleRouter::findIfaceByMac(const Buffer& mac) const
   auto iface = std::find_if(m_ifaces.begin(), m_ifaces.end(), [mac] (const Interface& iface) {
       return iface.addr == mac;
     });
-
   if (iface == m_ifaces.end()) {
     return nullptr;
   }
-
   return &*iface;
 }
 
@@ -146,11 +131,9 @@ SimpleRouter::findIfaceByName(const std::string& name) const
   auto iface = std::find_if(m_ifaces.begin(), m_ifaces.end(), [name] (const Interface& iface) {
       return iface.name == name;
     });
-
   if (iface == m_ifaces.end()) {
     return nullptr;
   }
-
   return &*iface;
 }
 
@@ -158,20 +141,16 @@ void
 SimpleRouter::reset(const pox::Ifaces& ports)
 {
   std::cerr << "Resetting SimpleRouter with " << ports.size() << " ports" << std::endl;
-
   m_arp.clear();
   m_ifaces.clear();
-
   for (const auto& iface : ports) {
     auto ip = m_ifNameToIpMap.find(iface.name);
     if (ip == m_ifNameToIpMap.end()) {
       std::cerr << "IP_CONFIG missing information about interface `" + iface.name + "`. Skipping it" << std::endl;
       continue;
     }
-
     m_ifaces.insert(Interface(iface.name, iface.mac, ip->second));
   }
-
   printIfaces(std::cerr);
 }
 
@@ -421,7 +400,6 @@ SimpleRouter::processArpReply(const Buffer& packet) {
   Buffer mac(pArp->arp_sha, pArp->arp_sha + 6);
   if (m_arp.lookup(ip) == nullptr) { 
     CERR("ARP reply, new entry: ")
-    //print_addr_ip_int(ip);
     CERR(macToString(mac))
     auto arpRequest = m_arp.insertArpEntry(mac, ip);
     if (arpRequest == nullptr) {
@@ -528,7 +506,6 @@ SimpleRouter::replyIcmpPortUnreachable(const Buffer& packet, const std::string& 
   // prepare ethernet header
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
-  //print_hdrs(reply);
   sendPacket(reply, outIface->name);
 }
 
@@ -573,7 +550,6 @@ SimpleRouter::replyIcmpTimeExceeded(const Buffer& packet, const std::string& inI
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
-  //print_hdrs((uint8_t*)reply.data(), reply.size());
 }
 
 void 
@@ -593,7 +569,6 @@ SimpleRouter::replyIcmpNetworkUnreachable(const Buffer& packet, const std::strin
   struct ethernet_hdr *pReplyEther = (struct ethernet_hdr*)((uint8_t*)reply.data());
   struct ip_hdr *pReplyIPv4 = (struct ip_hdr*)((uint8_t*)pReplyEther + sizeof(struct ethernet_hdr));
   struct icmp_t3_hdr *pReplyIcmpT3 = (struct icmp_t3_hdr*)((uint8_t*)pReplyIPv4 + sizeof(struct ip_hdr));
-  //struct icmp_t3_hdr *pIcmp = (struct icmp_t3_hdr*)((uint8_t*)pIPv4 + sizeof(struct ip_hdr));
   memcpy(pReplyEther, pEther, sizeof(struct ethernet_hdr));
   memcpy(pReplyIPv4, pIPv4, sizeof(struct ip_hdr));
   // prepare ICMP
@@ -612,7 +587,6 @@ SimpleRouter::replyIcmpNetworkUnreachable(const Buffer& packet, const std::strin
   pReplyIPv4->ip_ttl = 64;
   pReplyIPv4->ip_sum = cksum(pReplyIPv4, sizeof(struct ip_hdr));
   // prepare ethernet header
-  
   memcpy(pReplyEther->ether_shost, outIface->addr.data(), 6);
   memcpy(pReplyEther->ether_dhost, arp_entry->mac.data(), 6);
   sendPacket(reply, outIface->name);
@@ -643,6 +617,5 @@ SimpleRouter::sendArpRequest(uint32_t ip) {
   pEther->ether_type = htons(0x0806);
   sendPacket(request, outIface->name);
 }
-
 
 } // namespace simple_router 

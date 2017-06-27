@@ -37,16 +37,13 @@ RoutingTable::lookup(uint32_t ip) const
   int match_len = -1;
   RoutingTableEntry res;
   for (auto e : m_entries) {
-    
     if ((e.dest & e.mask) == (ip & e.mask)) {
-      
       int len = 32;
       unsigned rmask = ~ntohl(e.mask);
       while (rmask > 0) {
         len --;
         rmask /= 2;
       }
-      
       if (match_len < len) {
         match_len = len;
         res = e;
